@@ -1,0 +1,42 @@
+site_name: Price Tracker
+site_description: 台灣電商價格追蹤工具 (momo, PChome)
+site_author: Antigravity Assistant
+
+theme:
+  name: material
+  language: zh-Hant
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: 切换至亮色模式
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: 切换至暗色模式
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+nav:
+  - 首頁: index.md
+  - 功能特性: features.md
+  - 技術架構: technology.md
+  - 安裝與設定: setup.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
