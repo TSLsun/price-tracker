@@ -127,11 +127,12 @@ export default function Dashboard() {
     setItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))
   }
 
-  async function addCategory() {
-    if (!newCategoryName) return
+  async function addCategory(name?: string) {
+    const targetName = name || newCategoryName
+    if (!targetName) return
     const { data, error } = await supabase
       .from('categories')
-      .insert([{ name: newCategoryName, user_id: DUMMY_USER_ID }])
+      .insert([{ name: targetName, user_id: DUMMY_USER_ID }])
       .select()
 
     if (error) {
@@ -142,6 +143,7 @@ export default function Dashboard() {
     if (data) {
       setCategories(prev => [...prev, data[0]].sort((a, b) => a.name.localeCompare(b.name)))
       setNewCategoryName('')
+      return data[0].id
     }
   }
 
@@ -264,6 +266,7 @@ export default function Dashboard() {
         categories={categories}
         onClose={() => setEditingItem(null)}
         onSave={updateItem}
+        onAddCategory={addCategory}
       />
 
       <header className="mb-12">
@@ -308,7 +311,7 @@ export default function Dashboard() {
                 />
                 <button
                   type="button"
-                  onClick={addCategory}
+                  onClick={() => addCategory()}
                   className="bg-brand-primary px-6 py-2 rounded-lg text-white font-bold text-sm hover:bg-brand-primary/80 transition-colors"
                 >
                   新增
@@ -374,7 +377,7 @@ export default function Dashboard() {
           </motion.div>
         )}
 
-        <AddItemForm onAdd={addItem} categories={categories} />
+        <AddItemForm onAdd={addItem} onAddCategory={addCategory} categories={categories} />
       </section>
 
       <section className="mb-8 flex flex-col md:flex-row gap-6 items-center justify-between">

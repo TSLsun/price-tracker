@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Save, Tag, Folder, Type } from 'lucide-react'
+import { X, Save, Tag, Folder, Type, Loader2 } from 'lucide-react'
 import { TrackedItem, Category } from '@/types'
 
 interface EditItemDialogProps {
@@ -10,6 +10,7 @@ interface EditItemDialogProps {
     item: TrackedItem | null
     categories: Category[]
     onSave: (id: string, updates: Partial<TrackedItem>) => Promise<void>
+    onAddCategory: (name: string) => Promise<string | undefined>
     onClose: () => void
 }
 
@@ -18,6 +19,7 @@ export default function EditItemDialog({
     item,
     categories,
     onSave,
+    onAddCategory,
     onClose
 }: EditItemDialogProps) {
     const [name, setName] = useState('')
@@ -25,13 +27,38 @@ export default function EditItemDialog({
     const [categoryId, setCategoryId] = useState('')
     const [loading, setLoading] = useState(false)
 
+    // Inline category creation state
+    const [isAddingNewCategory, setIsAddingNewCategory] = useState(false)
+    const [newCategoryInput, setNewCategoryInput] = useState('')
+    const [addingCategory, setAddingCategory] = useState(false)
+
     useEffect(() => {
         if (item) {
             setName(item.name)
             setUnitSize(item.unit_size || '')
             setCategoryId(item.category_id || '')
+            setIsAddingNewCategory(false)
+            setNewCategoryInput('')
         }
     }, [item, isOpen])
+
+    const handleQuickAddCategory = async () => {
+        if (!newCategoryInput) {
+            setIsAddingNewCategory(false)
+            return
+        }
+        setAddingCategory(true)
+        try {
+            const newId = await onAddCategory(newCategoryInput)
+            if (newId) {
+                setCategoryId(newId)
+                setIsAddingNewCategory(false)
+                setNewCategoryInput('')
+            }
+        } finally {
+            setAddingCategory(false)
+        }
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -97,21 +124,60 @@ export default function EditItemDialog({
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-text-secondary text-xs font-bold mb-2 uppercase tracking-widest">
-                                        分類
-                                    </label>
+                                    <div className="flex justify-between items-center mb-2 px-1">
+                                        <label className="text-text-secondary text-xs font-bold uppercase tracking-widest">
+                                            分類
+                                        </label>
+                                        {!isAddingNewCategory && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsAddingNewCategory(true)}
+                                                className="text-[10px] font-bold text-brand-primary hover:text-brand-primary/80"
+                                            >
+                                                + 新增
+                                            </button>
+                                        )}
+                                    </div>
                                     <div className="relative">
-                                        <Folder className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
-                                        <select
-                                            value={categoryId}
-                                            onChange={(e) => setCategoryId(e.target.value)}
-                                            className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors appearance-none"
-                                        >
-                                            <option value="">未分類</option>
-                                            {categories.map(c => (
-                                                <option key={c.id} value={c.id}>{c.name}</option>
-                                            ))}
-                                        </select>
+                                        {isAddingNewCategory ? (
+                                            <div className="flex gap-1">
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    value={newCategoryInput}
+                                                    onChange={(e) => setNewCategoryInput(e.target.value)}
+                                                    className="flex-1 bg-surface-dark border border-brand-primary/50 rounded-xl py-2 px-3 text-sm text-text-primary outline-none"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault()
+                                                            handleQuickAddCategory()
+                                                        }
+                                                        if (e.key === 'Escape') setIsAddingNewCategory(false)
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleQuickAddCategory}
+                                                    className="bg-brand-primary/20 text-brand-primary p-2 rounded-xl"
+                                                >
+                                                    {addingCategory ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <Folder className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" size={18} />
+                                                <select
+                                                    value={categoryId}
+                                                    onChange={(e) => setCategoryId(e.target.value)}
+                                                    className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors appearance-none cursor-pointer"
+                                                >
+                                                    <option value="">未分類</option>
+                                                    {categories.map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
@@ -143,7 +209,7 @@ export default function EditItemDialog({
                                 <button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex-1 bg-brand-primary hover:bg-brand-primary/80 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-brand-primary/20"
+                                    className="flex-1 bg-brand-primary hover:bg-brand-primary/90 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-brand-primary/20"
                                 >
                                     {loading ? '儲存中...' : (
                                         <>
