@@ -7,10 +7,10 @@ import AddItemForm from '@/components/AddItemForm'
 import TrackedItemCard from '@/components/TrackedItemCard'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import EditItemDialog from '@/components/EditItemDialog'
-import { Package, Search, Loader2, PlusCircle } from 'lucide-react'
+import { Package, Search, Loader2, PlusCircle, LogOut } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-
-const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
+import { useAuth } from '@/lib/AuthContext'
+import { useRouter } from 'next/navigation'
 
 export default function Dashboard() {
   const [items, setItems] = useState<TrackedItem[]>([])
@@ -23,6 +23,8 @@ export default function Dashboard() {
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
   const [editingItem, setEditingItem] = useState<TrackedItem | null>(null)
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
 
   // Dialog State
   const [confirmState, setConfirmState] = useState<{
@@ -40,8 +42,12 @@ export default function Dashboard() {
   })
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (!authLoading && !user) {
+      router.push('/login')
+    } else if (user) {
+      fetchData()
+    }
+  }, [user, authLoading, router])
 
   async function fetchData() {
     try {
@@ -89,7 +95,7 @@ export default function Dashboard() {
             name: name || scrapedName,
             unit_size: unitSize,
             category_id: categoryId,
-            user_id: DUMMY_USER_ID,
+            user_id: user?.id,
             current_price: currentPrice,
             last_checked_at: new Date().toISOString()
           }
@@ -132,7 +138,7 @@ export default function Dashboard() {
     if (!targetName) return
     const { data, error } = await supabase
       .from('categories')
-      .insert([{ name: targetName, user_id: DUMMY_USER_ID }])
+      .insert([{ name: targetName, user_id: user?.id }])
       .select()
 
     if (error) {
@@ -253,6 +259,14 @@ export default function Dashboard() {
     return matchesSearch && matchesCategory
   })
 
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="animate-spin text-brand-primary" size={48} />
+      </div>
+    )
+  }
+
   return (
     <main className="max-w-7xl mx-auto px-4 py-12 min-h-screen">
       <ConfirmDialog
@@ -269,7 +283,7 @@ export default function Dashboard() {
         onAddCategory={addCategory}
       />
 
-      <header className="mb-12">
+      <header className="mb-12 flex justify-between items-start">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
           <h1 className="text-4xl font-black text-text-primary mb-2 flex items-center gap-3">
             <Package className="text-brand-primary" size={32} />
@@ -277,6 +291,17 @@ export default function Dashboard() {
           </h1>
           <p className="text-text-secondary">追蹤台灣電商平台價格，做出最划算的採買策略。</p>
         </motion.div>
+
+        <button
+          onClick={async () => {
+            await supabase.auth.signOut()
+            router.push('/login')
+          }}
+          className="flex items-center gap-2 text-text-secondary hover:text-red-400 transition-colors bg-surface-dark px-4 py-2 rounded-xl border border-white/5"
+        >
+          <LogOut size={18} />
+          <span className="text-sm font-bold">登出</span>
+        </button>
       </header>
 
       <section className="mb-12">

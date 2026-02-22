@@ -1,0 +1,43 @@
+name: Daily Price Scraper
+
+on:
+  schedule:
+    # Run at 00:00 UTC (08:00 Taipei time) every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "scraper/.python-version"
+          
+      - name: Install dependencies
+        working-directory: ./scraper
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml
+          
+      - name: Install Playwright Browsers
+        working-directory: ./scraper
+        run: uv run playwright install --with-deps chromium
+        
+      - name: Run Scraper
+        working-directory: ./scraper
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: uv run main.py

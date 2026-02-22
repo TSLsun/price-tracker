@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: price-tracker
+    env: docker
+    region: singapore
+    plan: free
+    # Health check path ensures Render knows when the app is up
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        sync: false

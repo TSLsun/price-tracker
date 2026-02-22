@@ -1,8 +1,10 @@
 'use client'
 
 import { TrackedItem, Category } from '@/types'
-import { ExternalLink, Trash2, Tag, Folder } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { ExternalLink, Trash2, Tag, Folder, LineChart as LineChartIcon } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+import PriceChart from './PriceChart'
 
 interface TrackedItemCardProps {
     item: TrackedItem
@@ -23,6 +25,7 @@ export default function TrackedItemCard({
 }: TrackedItemCardProps) {
     const isMomo = item.url.includes('momoshop.com.tw')
     const platformName = isMomo ? 'momo' : 'PChome'
+    const [showChart, setShowChart] = useState(false)
 
     // Helper to extract numeric value from strings like "1 year", "500ml", "30pcs"
     const calculateUnitPrice = (price: number, unitSize: string) => {
@@ -130,8 +133,29 @@ export default function TrackedItemCard({
                     <Tag size={12} />
                     <span>{item.unit_size || '尚無規格資訊'}</span>
                 </div>
-                <span>{new Date(item.last_checked_at).toLocaleDateString()}</span>
+                <div className="flex items-center gap-4">
+                    <span>{new Date(item.last_checked_at).toLocaleDateString()}</span>
+                    <button
+                        onClick={() => setShowChart(!showChart)}
+                        className={`p-1.5 rounded-md transition-colors ${showChart ? 'bg-brand-primary text-white' : 'bg-white/5 text-text-secondary hover:text-brand-primary hover:bg-white/10'}`}
+                    >
+                        <LineChartIcon size={14} />
+                    </button>
+                </div>
             </div>
+
+            <AnimatePresence>
+                {showChart && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <PriceChart itemId={item.id} />
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     )
 }
