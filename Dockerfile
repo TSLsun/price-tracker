@@ -5,7 +5,6 @@ FROM node:20-bookworm-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV NODE_ENV=production
 
 # Install Python, pip, uv, and Playwright system dependencies
 RUN apt-get update && apt-get install -y \
@@ -63,6 +62,9 @@ RUN npm run build
 
 # Expose the standard Next.js port
 EXPOSE 3000
+
+# Set Node environment to production
+ENV NODE_ENV=production
 
 # Start the Next.js production server
 CMD ["npm", "start"]
