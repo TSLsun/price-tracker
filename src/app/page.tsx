@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/utils/supabase'
 import { TrackedItem, Category } from '@/types'
 import AddItemForm from '@/components/AddItemForm'
 import TrackedItemCard from '@/components/TrackedItemCard'
@@ -9,7 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import EditItemDialog from '@/components/EditItemDialog'
 import { Package, Search, Loader2, PlusCircle, LogOut } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAuth } from '@/lib/AuthContext'
+import { useAuth } from '@/utils/AuthContext'
 import { useRouter } from 'next/navigation'
 
 export default function Dashboard() {

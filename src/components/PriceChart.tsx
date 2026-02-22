@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/utils/supabase'
 import { PriceHistory } from '@/types'
 import { Loader2 } from 'lucide-react'
 
