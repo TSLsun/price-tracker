@@ -6,6 +6,10 @@ services:
     plan: free
     # Health check path ensures Render knows when the app is up
     healthCheckPath: /
+    # Render automatically translates envVars to Docker build ARGs.
+    # NEXT_PUBLIC_* vars must be available at build time because Next.js
+    # inlines them into the JS bundle during `npm run build`.
+    # Set the actual values in the Render dashboard (sync: false).
     envVars:
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false

@@ -53,11 +53,16 @@ WORKDIR /app
 # Install Node dependencies
 RUN npm ci
 
-# Build the Next.js application
-# Note: Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
-# are available at build time if your Next.js app needs them for static generation.
-# In a standard full-stack Next.js app on Render, they can be injected at runtime,
-# but Next.js build sometimes checks them. We pass them in render.yaml.
+# NEXT_PUBLIC_* variables are inlined into the JS bundle at build time by Next.js.
+# They must be available during `npm run build`, not just at runtime.
+# We declare them as ARGs so they can be passed in from render.yaml via buildArgs.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+# Make them available as ENV so Next.js can read them during the build
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
 RUN npm run build
 
 # Expose the standard Next.js port
