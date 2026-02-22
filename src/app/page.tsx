@@ -167,6 +167,20 @@ export default function Dashboard() {
     })
   }
 
+  async function updateItemCategory(itemId: string, categoryId: string | undefined) {
+    const { error } = await supabase
+      .from('tracked_items')
+      .update({ category_id: categoryId || null })
+      .eq('id', itemId)
+
+    if (error) {
+      alert('更新分類失敗: ' + error.message)
+      return
+    }
+
+    setItems(prev => prev.map(item => item.id === itemId ? { ...item, category_id: categoryId } : item))
+  }
+
   const triggerDeleteItem = (id: string) => {
     setConfirmState({
       isOpen: true,
@@ -352,7 +366,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AnimatePresence mode="popLayout">
             {filteredItems.map(item => (
-              <TrackedItemCard key={item.id} item={item} onDelete={triggerDeleteItem} />
+              <TrackedItemCard
+                key={item.id}
+                item={item}
+                categories={categories}
+                onDelete={triggerDeleteItem}
+                onUpdateCategory={(catId) => updateItemCategory(item.id, catId)}
+              />
             ))}
           </AnimatePresence>
           {filteredItems.length === 0 && (

@@ -1,15 +1,17 @@
 'use client'
 
-import { TrackedItem } from '@/types'
-import { ExternalLink, Trash2, Tag } from 'lucide-react'
+import { TrackedItem, Category } from '@/types'
+import { ExternalLink, Trash2, Tag, Folder } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface TrackedItemCardProps {
     item: TrackedItem
+    categories: Category[]
     onDelete: (id: string) => void
+    onUpdateCategory: (categoryId: string | undefined) => void
 }
 
-export default function TrackedItemCard({ item, onDelete }: TrackedItemCardProps) {
+export default function TrackedItemCard({ item, categories, onDelete, onUpdateCategory }: TrackedItemCardProps) {
     const isMomo = item.url.includes('momoshop.com.tw')
     const platformName = isMomo ? 'momo' : 'PChome'
 
@@ -46,20 +48,41 @@ export default function TrackedItemCard({ item, onDelete }: TrackedItemCardProps
                 </button>
             </div>
 
-            <h3 className="text-text-primary font-semibold text-lg line-clamp-2 mb-2 flex-grow">
+            <h3 className="text-text-primary font-semibold text-lg line-clamp-2 mb-2">
                 {item.name}
             </h3>
 
-            <div className="flex items-end justify-between mt-4">
+            <div className="mb-4">
+                <div className="flex items-center gap-2 group/cat relative">
+                    <Folder size={14} className="text-text-secondary" />
+                    <select
+                        value={item.category_id || ''}
+                        onChange={(e) => onUpdateCategory(e.target.value || undefined)}
+                        className="bg-transparent text-xs text-text-secondary hover:text-brand-primary outline-none cursor-pointer appearance-none pr-4"
+                    >
+                        <option value="" className="bg-surface-dark text-text-primary">未分類</option>
+                        {categories.map(cat => (
+                            <option key={cat.id} value={cat.id} className="bg-surface-dark text-text-primary">
+                                {cat.name}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none opacity-0 group-hover/cat:opacity-100 transition-opacity">
+                        <Tag size={10} className="text-brand-primary" />
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-end justify-between mt-auto">
                 <div>
-                    <p className="text-text-secondary text-sm mb-1">Current Price</p>
+                    <p className="text-text-secondary text-sm mb-1">目前價格</p>
                     <div className="flex flex-col">
                         <span className="text-2xl font-bold text-brand-primary">
                             ${item.current_price.toLocaleString()}
                         </span>
                         {item.unit_size && (
                             <span className="text-xs text-brand-secondary font-medium mt-1">
-                                Avg. ${calculateUnitPrice(item.current_price, item.unit_size)} / unit
+                                平均 ${calculateUnitPrice(item.current_price, item.unit_size)} / 單位
                             </span>
                         )}
                     </div>
@@ -78,7 +101,7 @@ export default function TrackedItemCard({ item, onDelete }: TrackedItemCardProps
             <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-text-secondary">
                 <div className="flex items-center gap-1">
                     <Tag size={12} />
-                    <span>{item.unit_size || 'No size info'}</span>
+                    <span>{item.unit_size || '尚無規格資訊'}</span>
                 </div>
                 <span>{new Date(item.last_checked_at).toLocaleDateString()}</span>
             </div>
