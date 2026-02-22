@@ -1,65 +1,367 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { TrackedItem, Category } from '@/types'
+import AddItemForm from '@/components/AddItemForm'
+import TrackedItemCard from '@/components/TrackedItemCard'
+import ConfirmDialog from '@/components/ConfirmDialog'
+import { Package, Search, Loader2, PlusCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+
+const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000'
+
+export default function Dashboard() {
+  const [items, setItems] = useState<TrackedItem[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [showAddCategory, setShowAddCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+
+  // Dialog State
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant: 'danger' | 'primary';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    variant: 'primary'
+  })
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  async function fetchData() {
+    try {
+      setLoading(true)
+
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('tracked_items')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (itemsError) throw itemsError
+      setItems(itemsData || [])
+
+      const { data: catData, error: catError } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name', { ascending: true })
+
+      if (catError) throw catError
+      setCategories(catData || [])
+    } catch (err) {
+      console.error('Error fetching data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function addItem(url: string, name: string, unitSize?: string, categoryId?: string) {
+    try {
+      // 1. First, try to scrape the current price and title
+      const scrapeRes = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      const scrapeData = await scrapeRes.json();
+      const currentPrice = scrapeData.price || 0;
+      const scrapedName = scrapeData.title || name;
+
+      // 2. Insert into Supabase with actual price
+      const { data, error } = await supabase
+        .from('tracked_items')
+        .insert([
+          {
+            url,
+            name: name || scrapedName, // Use user name if provided, otherwise scraped name
+            unit_size: unitSize,
+            category_id: categoryId,
+            user_id: DUMMY_USER_ID,
+            current_price: currentPrice,
+            last_checked_at: new Date().toISOString()
+          }
+        ])
+        .select()
+
+      if (error) throw error;
+
+      if (data) {
+        setItems(prev => [data[0], ...prev])
+
+        // 3. Record the initial price in history
+        if (currentPrice > 0) {
+          await supabase.from('price_history').insert([
+            { item_id: data[0].id, price: currentPrice }
+          ])
+        }
+      }
+    } catch (error: any) {
+      alert('新增失敗: ' + (error.message || '無法抓取價格'));
+      console.error('Add item error:', error);
+    }
+  }
+
+  async function addCategory() {
+    if (!newCategoryName) return
+    const { data, error } = await supabase
+      .from('categories')
+      .insert([{ name: newCategoryName, user_id: DUMMY_USER_ID }])
+      .select()
+
+    if (error) {
+      alert('新增分類失敗: ' + error.message)
+      return
+    }
+
+    if (data) {
+      setCategories(prev => [...prev, data[0]].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewCategoryName('')
+    }
+  }
+
+  async function updateCategory(id: string, newName: string) {
+    const { error } = await supabase
+      .from('categories')
+      .update({ name: newName })
+      .eq('id', id)
+
+    if (error) {
+      alert('更新失敗: ' + error.message)
+      return
+    }
+
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c).sort((a, b) => a.name.localeCompare(b.name)))
+    setEditingCategoryId(null)
+  }
+
+  // --- DELETE LOGIC WITH CUSTOM DIALOG ---
+
+  const triggerDeleteCategory = (id: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: '刪除分類',
+      message: '確定要刪除此分類嗎？該分類下的商品將變為「未分類」。',
+      variant: 'danger',
+      onConfirm: async () => {
+        const { error } = await supabase.from('categories').delete().eq('id', id)
+        if (error) {
+          alert('刪除失敗: ' + error.message)
+          return
+        }
+        setCategories(prev => prev.filter(c => c.id !== id))
+        if (selectedCategory === id) setSelectedCategory(null)
+      }
+    })
+  }
+
+  const triggerDeleteItem = (id: string) => {
+    setConfirmState({
+      isOpen: true,
+      title: '停止追蹤',
+      message: '確定要停止追蹤此商品嗎？所有的歷史價格紀錄也將被移除。',
+      variant: 'danger',
+      onConfirm: async () => {
+        const { error } = await supabase.from('tracked_items').delete().eq('id', id)
+        if (error) {
+          alert('刪除失敗: ' + error.message)
+          return
+        }
+        setItems(prev => prev.filter(item => item.id !== id))
+      }
+    })
+  }
+
+  const filteredItems = items.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesCategory = selectedCategory ? item.category_id === selectedCategory : true
+    return matchesSearch && matchesCategory
+  })
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="max-w-7xl mx-auto px-4 py-12 min-h-screen">
+      <ConfirmDialog
+        {...confirmState}
+        onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <header className="mb-12">
+        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+          <h1 className="text-4xl font-black text-text-primary mb-2 flex items-center gap-3">
+            <Package className="text-brand-primary" size={32} />
+            Price Tracker
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <p className="text-text-secondary">追蹤台灣電商平台價格，做出最划算的採買策略。</p>
+        </motion.div>
+      </header>
+
+      <section className="mb-12">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
+            追蹤新商品
+          </h2>
+          <button
+            type="button"
+            onClick={() => setShowAddCategory(!showAddCategory)}
+            className="text-brand-primary text-sm font-bold flex items-center gap-1 hover:underline"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <PlusCircle size={16} />
+            管理分類
+          </button>
         </div>
-      </main>
-    </div>
-  );
+
+        {showAddCategory && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            className="glass-card p-6 mb-8 border-brand-primary/20"
+          >
+            <div className="flex flex-col gap-6">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="新分類名稱..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="flex-1 bg-surface-dark border border-white/10 rounded-lg px-4 py-2 text-text-primary focus:border-brand-primary/50 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={addCategory}
+                  className="bg-brand-primary px-6 py-2 rounded-lg text-white font-bold text-sm hover:bg-brand-primary/80 transition-colors"
+                >
+                  新增
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-4 border-t border-white/5">
+                {categories.map((cat) => (
+                  <div key={cat.id} className="flex items-center justify-between bg-white/5 rounded-lg p-3 group">
+                    {editingCategoryId === cat.id ? (
+                      <div className="flex items-center gap-2 w-full">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingCategoryName}
+                          onChange={(e) => setEditingCategoryName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') updateCategory(cat.id, editingCategoryName)
+                            if (e.key === 'Escape') setEditingCategoryId(null)
+                          }}
+                          className="flex-1 bg-surface-dark border border-brand-primary/50 rounded px-2 py-1 text-sm text-text-primary outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateCategory(cat.id, editingCategoryName)}
+                          className="text-green-400 hover:text-green-300 font-bold text-xs"
+                        >
+                          儲存
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-text-primary text-sm font-medium">{cat.name}</span>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCategoryId(cat.id);
+                              setEditingCategoryName(cat.name);
+                            }}
+                            className="text-text-secondary hover:text-brand-primary transition-colors text-xs"
+                          >
+                            編輯
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerDeleteCategory(cat.id);
+                            }}
+                            className="text-text-secondary hover:text-red-400 transition-colors text-xs"
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <AddItemForm onAdd={addItem} categories={categories} />
+      </section>
+
+      <section className="mb-8 flex flex-col md:flex-row gap-6 items-center justify-between">
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory(null)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${!selectedCategory ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' : 'bg-surface-dark text-text-secondary hover:bg-surface-accent'
+              }`}
+          >
+            全部顯示
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.id)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${selectedCategory === cat.id ? 'bg-brand-primary text-white shadow-lg' : 'bg-surface-dark text-text-secondary hover:bg-surface-accent'
+                }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+          <input
+            type="text"
+            placeholder="搜尋追蹤商品..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-surface-dark border border-white/10 rounded-xl py-2 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50"
+          />
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <Loader2 className="animate-spin text-brand-primary" size={48} />
+          <p className="text-text-secondary font-medium">同步資料中...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence mode="popLayout">
+            {filteredItems.map(item => (
+              <TrackedItemCard key={item.id} item={item} onDelete={triggerDeleteItem} />
+            ))}
+          </AnimatePresence>
+          {filteredItems.length === 0 && (
+            <div className="col-span-full py-24 text-center border-2 border-dashed border-white/5 rounded-3xl">
+              <p className="text-text-secondary">目前沒有商品。請在上方新增連結！</p>
+            </div>
+          )}
+        </div>
+      )}
+    </main>
+  )
 }
