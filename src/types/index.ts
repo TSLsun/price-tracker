@@ -12,6 +12,8 @@ export interface TrackedItem {
     category_id?: string;
     created_at: string;
     last_checked_at: string;
+    status?: 'pending' | 'done' | 'error';
+    error_message?: string;
 }
 
 export interface PriceHistory {

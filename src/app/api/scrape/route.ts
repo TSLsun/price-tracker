@@ -2,42 +2,103 @@ import { NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import path from 'path'
+import { createClient } from '@supabase/supabase-js'
 
 const execAsync = promisify(exec)
 
+// Use service role key on the server side for direct DB writes
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(request: Request) {
     try {
-        const { url } = await request.json()
+        const { url, item_id } = await request.json()
 
-        if (!url) {
-            return NextResponse.json({ error: 'URL is required' }, { status: 400 })
+        if (!url || !item_id) {
+            return NextResponse.json({ error: 'url and item_id are required' }, { status: 400 })
         }
 
-        // Path to the scraper script
-        const scraperDir = path.join(process.cwd(), 'scraper')
-        const scriptPath = path.join(scraperDir, 'single_scrape.py')
+        // Fire-and-forget: run the scraper in the background
+        // The result will be written directly to Supabase, triggering Realtime on the client
+        ; (async () => {
+            try {
+                const scraperDir = path.join(process.cwd(), 'scraper')
+                const scriptPath = path.join(scraperDir, 'single_scrape.py')
+                console.log(`[scrape] Starting background scrape for item ${item_id}: ${url}`)
 
-        console.log(`Executing single scrape for: ${url}`)
+                const { stdout, stderr } = await execAsync(
+                    `cd "${scraperDir}" && uv run python single_scrape.py "${url}"`,
+                    { timeout: 120_000 } // 2 min hard timeout
+                )
 
-        // Execute using 'uv run' to ensure the environment is correct
-        // We wrap in a promise to handle stderr if needed
-        const { stdout, stderr } = await execAsync(`cd "${scraperDir}" && uv run python single_scrape.py "${url}"`)
+                if (stderr && !stdout) {
+                    throw new Error('Scraper produced no output: ' + stderr)
+                }
 
-        if (stderr && !stdout) {
-            console.error('Scraper stderr:', stderr)
-            return NextResponse.json({ error: 'Scraper execution failed' }, { status: 500 })
-        }
+                const result = JSON.parse(stdout.trim())
 
-        try {
-            const result = JSON.parse(stdout.trim())
-            return NextResponse.json(result)
-        } catch (parseError) {
-            console.error('Failed to parse scraper output:', stdout)
-            return NextResponse.json({ error: 'Invalid scraper output' }, { status: 500 })
-        }
+                if (result.error || !result.price) {
+                    await supabaseAdmin
+                        .from('tracked_items')
+                        .update({
+                            status: 'error',
+                            error_message: result.error || '無法取得價格',
+                            last_checked_at: new Date().toISOString(),
+                        })
+                        .eq('id', item_id)
+                    return
+                }
 
+                const updates: Record<string, unknown> = {
+                    current_price: result.price,
+                    status: 'done',
+                    error_message: null,
+                    last_checked_at: new Date().toISOString(),
+                }
+
+                // If a name wasn't provided by the user, use the scraped title
+                if (result.title) {
+                    // Only overwrite if the DB still has the placeholder value
+                    const { data: existing } = await supabaseAdmin
+                        .from('tracked_items')
+                        .select('name')
+                        .eq('id', item_id)
+                        .single()
+                    if (existing?.name === '抓取中...' || existing?.name === '') {
+                        updates.name = result.title
+                    }
+                }
+
+                await supabaseAdmin
+                    .from('tracked_items')
+                    .update(updates)
+                    .eq('id', item_id)
+
+                // Insert into price history
+                await supabaseAdmin
+                    .from('price_history')
+                    .insert({ item_id, price: result.price })
+
+                console.log(`[scrape] Done for item ${item_id}: price=${result.price}`)
+            } catch (err: any) {
+                console.error(`[scrape] Background scrape failed for item ${item_id}:`, err.message)
+                await supabaseAdmin
+                    .from('tracked_items')
+                    .update({
+                        status: 'error',
+                        error_message: err.message || '爬蟲執行失敗',
+                        last_checked_at: new Date().toISOString(),
+                    })
+                    .eq('id', item_id)
+            }
+        })()
+
+        // Return immediately — the client listens via Realtime for the actual result
+        return NextResponse.json({ ok: true, item_id }, { status: 202 })
     } catch (error: any) {
-        console.error('API Error:', error)
+        console.error('[scrape] API Error:', error)
         return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
     }
 }

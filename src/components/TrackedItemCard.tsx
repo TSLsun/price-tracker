@@ -1,7 +1,7 @@
 'use client'
 
 import { TrackedItem, Category } from '@/types'
-import { ExternalLink, Trash2, Tag, Folder, LineChart as LineChartIcon } from 'lucide-react'
+import { ExternalLink, Trash2, Tag, Folder, LineChart as LineChartIcon, Loader2, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import PriceChart from './PriceChart'
@@ -26,6 +26,8 @@ export default function TrackedItemCard({
     const isMomo = item.url.includes('momoshop.com.tw')
     const platformName = isMomo ? 'momo' : 'PChome'
     const [showChart, setShowChart] = useState(false)
+    const isPending = item.status === 'pending'
+    const isError = item.status === 'error'
 
     // Helper to extract numeric value from strings like "1 year", "500ml", "30pcs"
     const calculateUnitPrice = (price: number, unitSize: string) => {
@@ -43,119 +45,170 @@ export default function TrackedItemCard({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             layout
-            className={`glass-card p-5 hover-glow flex flex-col h-full group relative ${isBestDeal ? 'border-brand-primary/50' : ''}`}
+            className={`glass-card p-5 hover-glow flex flex-col h-full group relative ${isBestDeal ? 'border-brand-primary/50' : ''
+                } ${isPending ? 'border-yellow-500/30' : ''} ${isError ? 'border-red-500/30' : ''}`}
         >
-            {isBestDeal && (
+            {isBestDeal && !isPending && (
                 <div className="absolute -top-3 left-4 bg-brand-primary text-white text-[10px] font-black px-2 py-0.5 rounded shadow-lg shadow-brand-primary/20 z-10 flex items-center gap-1">
                     <Tag size={10} />
                     最划算
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-4">
-                <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${isMomo ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'
-                    }`}>
-                    {platformName}
-                </span>
-                <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(item);
-                        }}
-                        className="text-text-secondary hover:text-brand-primary p-1"
-                    >
-                        <Tag size={16} />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(item.id);
-                        }}
-                        className="text-text-secondary hover:text-red-400 p-1"
-                    >
-                        <Trash2 size={16} />
-                    </button>
-                </div>
-            </div>
-
-            <h3 className="text-text-primary font-semibold text-lg line-clamp-2 mb-2">
-                {item.name}
-            </h3>
-
-            <div className="mb-4">
-                <div className="flex items-center gap-2 group/cat relative">
-                    <Folder size={14} className="text-text-secondary" />
-                    <select
-                        value={item.category_id || ''}
-                        onChange={(e) => onUpdateCategory(e.target.value || undefined)}
-                        className="bg-transparent text-xs text-text-secondary hover:text-brand-primary outline-none cursor-pointer appearance-none pr-4"
-                    >
-                        <option value="" className="bg-surface-dark text-text-primary">未分類</option>
-                        {categories.map(cat => (
-                            <option key={cat.id} value={cat.id} className="bg-surface-dark text-text-primary">
-                                {cat.name}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            </div>
-
-            <div className="flex items-end justify-between mt-auto">
-                <div>
-                    <p className="text-text-secondary text-sm mb-1">目前價格</p>
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-bold text-brand-primary">
-                            ${item.current_price.toLocaleString()}
-                        </span>
-                        {unitPrice !== null && (
-                            <span className={`text-xs font-medium mt-1 ${isBestDeal ? 'text-green-400' : 'text-brand-secondary'}`}>
-                                平均 ${unitPrice.toLocaleString(undefined, { maximumFractionDigits: 1 })} / 單位
-                            </span>
-                        )}
+            {/* Pending skeleton overlay */}
+            {isPending && (
+                <div className="flex flex-col gap-4 flex-1">
+                    <div className="flex justify-between items-center">
+                        <div className="h-6 w-16 bg-white/5 rounded-md animate-pulse" />
+                        <div className="flex items-center gap-1.5 text-yellow-400/80 text-xs font-bold">
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>爬取中...</span>
+                        </div>
                     </div>
+                    <div className="space-y-2">
+                        <div className="h-4 w-full bg-white/5 rounded-md animate-pulse" />
+                        <div className="h-4 w-3/4 bg-white/5 rounded-md animate-pulse" />
+                    </div>
+                    <div className="mt-auto pt-4 border-t border-white/5">
+                        <div className="h-8 w-24 bg-white/5 rounded-md animate-pulse" />
+                    </div>
+                    <div className="text-xs text-text-secondary truncate">{item.url}</div>
                 </div>
+            )}
 
-                <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 bg-surface-accent rounded-lg text-text-primary hover:bg-brand-primary/20 transition-colors"
-                >
-                    <ExternalLink size={18} />
-                </a>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-text-secondary">
-                <div className="flex items-center gap-1">
-                    <Tag size={12} />
-                    <span>{item.unit_size || '尚無規格資訊'}</span>
+            {/* Error state */}
+            {isError && (
+                <div className="flex flex-col gap-3 flex-1">
+                    <div className="flex justify-between items-start">
+                        <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${isMomo ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                            {platformName}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                            className="text-text-secondary hover:text-red-400 p-1"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
+                    <div className="flex items-start gap-2 text-red-400 bg-red-500/10 rounded-xl p-3">
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-bold mb-0.5">爬取失敗</p>
+                            <p className="text-xs text-red-300/70 leading-relaxed">{item.error_message || '無法取得價格，請確認連結是否正確。'}</p>
+                        </div>
+                    </div>
+                    <div className="mt-auto text-xs text-text-secondary truncate">{item.url}</div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <span>{new Date(item.last_checked_at).toLocaleDateString()}</span>
-                    <button
-                        onClick={() => setShowChart(!showChart)}
-                        className={`p-1.5 rounded-md transition-colors ${showChart ? 'bg-brand-primary text-white' : 'bg-white/5 text-text-secondary hover:text-brand-primary hover:bg-white/10'}`}
-                    >
-                        <LineChartIcon size={14} />
-                    </button>
-                </div>
-            </div>
+            )}
 
-            <AnimatePresence>
-                {showChart && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                    >
-                        <PriceChart itemId={item.id} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* Normal state */}
+            {!isPending && !isError && (
+                <>
+                    <div className="flex justify-between items-start mb-4">
+                        <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${isMomo ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                            {platformName}
+                        </span>
+                        <div className="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                                className="text-text-secondary hover:text-brand-primary p-1"
+                            >
+                                <Tag size={16} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                                className="text-text-secondary hover:text-red-400 p-1"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <h3 className="text-text-primary font-semibold text-lg line-clamp-2 mb-2">
+                        {item.name}
+                    </h3>
+
+                    <div className="mb-4">
+                        <div className="flex items-center gap-2 group/cat relative">
+                            <Folder size={14} className="text-text-secondary" />
+                            <select
+                                value={item.category_id || ''}
+                                onChange={(e) => onUpdateCategory(e.target.value || undefined)}
+                                className="bg-transparent text-xs text-text-secondary hover:text-brand-primary outline-none cursor-pointer appearance-none pr-4"
+                            >
+                                <option value="" className="bg-surface-dark text-text-primary">未分類</option>
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.id} className="bg-surface-dark text-text-primary">
+                                        {cat.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-end justify-between mt-auto">
+                        <div>
+                            <p className="text-text-secondary text-sm mb-1">目前價格</p>
+                            <div className="flex flex-col">
+                                <span className="text-2xl font-bold text-brand-primary">
+                                    ${item.current_price.toLocaleString()}
+                                </span>
+                                {unitPrice !== null && (
+                                    <span className={`text-xs font-medium mt-1 ${isBestDeal ? 'text-green-400' : 'text-brand-secondary'}`}>
+                                        平均 ${unitPrice.toLocaleString(undefined, { maximumFractionDigits: 1 })} / 單位
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 bg-surface-accent rounded-lg text-text-primary hover:bg-brand-primary/20 transition-colors"
+                        >
+                            <ExternalLink size={18} />
+                        </a>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs text-text-secondary">
+                        <div className="flex items-center gap-1">
+                            <Tag size={12} />
+                            <span>{item.unit_size || '尚無規格資訊'}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span>{new Date(item.last_checked_at).toLocaleDateString()}</span>
+                            <button
+                                onClick={() => setShowChart(!showChart)}
+                                className={`p-1.5 rounded-md transition-colors ${showChart
+                                        ? 'bg-brand-primary text-white'
+                                        : 'bg-white/5 text-text-secondary hover:text-brand-primary hover:bg-white/10'
+                                    }`}
+                            >
+                                <LineChartIcon size={14} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <AnimatePresence>
+                        {showChart && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <PriceChart itemId={item.id} />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </>
+            )}
         </motion.div>
     )
 }

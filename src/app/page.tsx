@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/utils/supabase'
 import { TrackedItem, Category } from '@/types'
 import AddItemForm from '@/components/AddItemForm'
@@ -11,6 +11,7 @@ import { Package, Search, Loader2, PlusCircle, LogOut } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/utils/AuthContext'
 import { useRouter } from 'next/navigation'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 export default function Dashboard() {
   const [items, setItems] = useState<TrackedItem[]>([])
@@ -25,6 +26,8 @@ export default function Dashboard() {
   const [editingItem, setEditingItem] = useState<TrackedItem | null>(null)
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
+  // Keep track of all active Realtime channels so we can clean them up
+  const realtimeChannelsRef = useRef<RealtimeChannel[]>([])
 
   // Dialog State
   const [confirmState, setConfirmState] = useState<{
@@ -76,47 +79,68 @@ export default function Dashboard() {
   }
 
   async function addItem(url: string, name: string, unitSize?: string, categoryId?: string) {
-    try {
-      const scrapeRes = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-
-      const scrapeData = await scrapeRes.json();
-      const currentPrice = scrapeData.price || 0;
-      const scrapedName = scrapeData.title || name;
-
-      const { data, error } = await supabase
-        .from('tracked_items')
-        .insert([
-          {
-            url,
-            name: name || scrapedName,
-            unit_size: unitSize,
-            category_id: categoryId,
-            user_id: user?.id,
-            current_price: currentPrice,
-            last_checked_at: new Date().toISOString()
-          }
-        ])
-        .select()
-
-      if (error) throw error;
-
-      if (data) {
-        setItems(prev => [data[0], ...prev])
-
-        if (currentPrice > 0) {
-          await supabase.from('price_history').insert([
-            { item_id: data[0].id, price: currentPrice }
-          ])
+    // Step 1: Insert a 'pending' row immediately so the card appears right away
+    const placeholderName = name || '抓取中...'
+    const { data, error } = await supabase
+      .from('tracked_items')
+      .insert([
+        {
+          url,
+          name: placeholderName,
+          unit_size: unitSize || null,
+          category_id: categoryId || null,
+          user_id: user?.id,
+          current_price: 0,
+          status: 'pending',
+          last_checked_at: new Date().toISOString()
         }
-      }
-    } catch (error: any) {
-      alert('新增失敗: ' + (error.message || '無法抓取價格'));
-      console.error('Add item error:', error);
+      ])
+      .select()
+
+    if (error) {
+      alert('新增失敗: ' + error.message)
+      return
     }
+
+    const newItem: TrackedItem = data![0]
+
+    // Step 2: Optimistically add the pending card to the UI
+    setItems(prev => [newItem, ...prev])
+
+    // Step 3: Kick off the background scrape (fire-and-forget from the frontend's POV)
+    fetch('/api/scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, item_id: newItem.id })
+    }).catch(err => console.error('[scrape] Failed to start scraper:', err))
+
+    // Step 4: Subscribe to Realtime updates for THIS specific row
+    // When the scraper finishes and updates the DB, this fires automatically.
+    const channel = supabase
+      .channel(`item-update-${newItem.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tracked_items',
+          filter: `id=eq.${newItem.id}`
+        },
+        (payload) => {
+          const updated = payload.new as TrackedItem
+          setItems(prev =>
+            prev.map(item => item.id === updated.id ? { ...item, ...updated } : item)
+          )
+          // Once the scrape is done (success or error), unsubscribe
+          if (updated.status === 'done' || updated.status === 'error') {
+            supabase.removeChannel(channel)
+            realtimeChannelsRef.current = realtimeChannelsRef.current.filter(c => c !== channel)
+          }
+        }
+      )
+      .subscribe()
+
+    realtimeChannelsRef.current.push(channel)
   }
 
   async function updateItem(id: string, updates: Partial<TrackedItem>) {
