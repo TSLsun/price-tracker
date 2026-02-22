@@ -32,78 +32,74 @@ export default function AddItemForm({ onAdd, categories }: AddItemFormProps) {
     }
 
     return (
-        <form onSubmit={handleSubmit} className="glass-card p-6 mb-8 flex flex-col gap-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="w-full">
-                    <label className="block text-text-secondary text-xs font-bold mb-2 uppercase tracking-widest">
-                        Product URL
-                    </label>
-                    <div className="relative">
-                        <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
-                        <input
-                            type="url"
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
-                            placeholder="Paste momo or PChome link..."
-                            className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors"
-                            required
-                        />
+        <form onSubmit={handleSubmit} className="glass-card p-6 mb-12 flex flex-col gap-5 border-brand-primary/10">
+            {/* Primary Action Row */}
+            <div className="flex flex-col md:flex-row gap-3">
+                <div className="flex-1 relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-primary/60">
+                        <LinkIcon size={20} />
                     </div>
-                </div>
-
-                <div className="w-full">
-                    <label className="block text-text-secondary text-xs font-bold mb-2 uppercase tracking-widest">
-                        Display Name (Optional)
-                    </label>
                     <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Leave blank to auto-fetch title"
-                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors"
+                        type="url"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="在此貼上 momo 或 PChome 商品連結..."
+                        className="w-full bg-surface-dark/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-text-primary focus:outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/5 transition-all text-lg"
+                        required
                     />
                 </div>
+                <button
+                    type="submit"
+                    disabled={loading || !url}
+                    className="md:w-48 bg-brand-primary hover:bg-brand-primary/90 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-30 shadow-xl shadow-brand-primary/20 h-[60px] md:h-auto"
+                >
+                    {loading ? <Loader2 className="animate-spin" size={24} /> : <Plus size={24} />}
+                    立即追蹤
+                </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-white/5 pt-4">
-                <div className="w-full">
-                    <label className="block text-text-secondary text-xs font-bold mb-2 uppercase tracking-widest">
-                        Category
+            {/* Optional Metadata Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-white/5">
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest pl-1">
+                        分類 (選擇)
                     </label>
                     <select
                         value={categoryId}
                         onChange={(e) => setCategoryId(e.target.value)}
-                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors appearance-none"
+                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors appearance-none cursor-pointer text-sm"
                     >
-                        <option value="">No Category</option>
+                        <option value="">未分類</option>
                         {categories.map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                     </select>
                 </div>
 
-                <div className="w-full">
-                    <label className="block text-text-secondary text-xs font-bold mb-2 uppercase tracking-widest">
-                        Unit Size (Target Comparison)
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest pl-1">
+                        規格 (選填)
                     </label>
                     <input
                         type="text"
                         value={unitSize}
                         onChange={(e) => setUnitSize(e.target.value)}
-                        placeholder="e.g. 1 year, 500ml, 30pcs"
-                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors"
+                        placeholder="例如: 500ml, 30入"
+                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors text-sm"
                     />
                 </div>
 
-                <div className="flex items-end">
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-brand-primary hover:bg-brand-primary/80 text-white font-bold h-[50px] rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-brand-primary/20"
-                    >
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
-                        Tracking Product
-                    </button>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest pl-1">
+                        顯示名稱 (選填)
+                    </label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="不填則自動抓取品名"
+                        className="w-full bg-surface-dark border border-white/10 rounded-xl py-3 px-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors text-sm"
+                    />
                 </div>
             </div>
         </form>

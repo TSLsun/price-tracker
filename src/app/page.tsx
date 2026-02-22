@@ -6,6 +6,7 @@ import { TrackedItem, Category } from '@/types'
 import AddItemForm from '@/components/AddItemForm'
 import TrackedItemCard from '@/components/TrackedItemCard'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import EditItemDialog from '@/components/EditItemDialog'
 import { Package, Search, Loader2, PlusCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -15,12 +16,13 @@ export default function Dashboard() {
   const [items, setItems] = useState<TrackedItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchFilter, setSearchFilter] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [editingItem, setEditingItem] = useState<TrackedItem | null>(null)
 
   // Dialog State
   const [confirmState, setConfirmState] = useState<{
@@ -69,7 +71,6 @@ export default function Dashboard() {
 
   async function addItem(url: string, name: string, unitSize?: string, categoryId?: string) {
     try {
-      // 1. First, try to scrape the current price and title
       const scrapeRes = await fetch('/api/scrape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,13 +81,12 @@ export default function Dashboard() {
       const currentPrice = scrapeData.price || 0;
       const scrapedName = scrapeData.title || name;
 
-      // 2. Insert into Supabase with actual price
       const { data, error } = await supabase
         .from('tracked_items')
         .insert([
           {
             url,
-            name: name || scrapedName, // Use user name if provided, otherwise scraped name
+            name: name || scrapedName,
             unit_size: unitSize,
             category_id: categoryId,
             user_id: DUMMY_USER_ID,
@@ -101,7 +101,6 @@ export default function Dashboard() {
       if (data) {
         setItems(prev => [data[0], ...prev])
 
-        // 3. Record the initial price in history
         if (currentPrice > 0) {
           await supabase.from('price_history').insert([
             { item_id: data[0].id, price: currentPrice }
@@ -112,6 +111,20 @@ export default function Dashboard() {
       alert('新增失敗: ' + (error.message || '無法抓取價格'));
       console.error('Add item error:', error);
     }
+  }
+
+  async function updateItem(id: string, updates: Partial<TrackedItem>) {
+    const { error } = await supabase
+      .from('tracked_items')
+      .update(updates)
+      .eq('id', id)
+
+    if (error) {
+      alert('更新失敗: ' + error.message)
+      return
+    }
+
+    setItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))
   }
 
   async function addCategory() {
@@ -146,8 +159,6 @@ export default function Dashboard() {
     setCategories(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c).sort((a, b) => a.name.localeCompare(b.name)))
     setEditingCategoryId(null)
   }
-
-  // --- DELETE LOGIC WITH CUSTOM DIALOG ---
 
   const triggerDeleteCategory = (id: string) => {
     setConfirmState({
@@ -198,8 +209,44 @@ export default function Dashboard() {
     })
   }
 
+  // Calculate best deals
+  const getBestDealItems = () => {
+    const deals: Record<string, string> = {}
+
+    const categoryGroups: Record<string, TrackedItem[]> = {}
+    items.forEach(item => {
+      const catId = item.category_id || 'uncategorized'
+      if (!categoryGroups[catId]) categoryGroups[catId] = []
+      categoryGroups[catId].push(item)
+    })
+
+    Object.entries(categoryGroups).forEach(([catId, group]) => {
+      let minUnitPrice = Infinity
+      let bestItemId = ''
+
+      group.forEach(item => {
+        if (!item.unit_size) return
+        const match = item.unit_size.match(/(\d+(\.\d+)?)/)
+        if (!match) return
+        const val = parseFloat(match[0])
+        if (val === 0) return
+        const unitPrice = item.current_price / val
+        if (unitPrice < minUnitPrice) {
+          minUnitPrice = unitPrice
+          bestItemId = item.id
+        }
+      })
+
+      if (bestItemId) deals[catId] = bestItemId
+    })
+
+    return deals
+  }
+
+  const bestDealMap = getBestDealItems()
+
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase())
     const matchesCategory = selectedCategory ? item.category_id === selectedCategory : true
     return matchesSearch && matchesCategory
   })
@@ -209,6 +256,14 @@ export default function Dashboard() {
       <ConfirmDialog
         {...confirmState}
         onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <EditItemDialog
+        isOpen={!!editingItem}
+        item={editingItem}
+        categories={categories}
+        onClose={() => setEditingItem(null)}
+        onSave={updateItem}
       />
 
       <header className="mb-12">
@@ -323,36 +378,38 @@ export default function Dashboard() {
       </section>
 
       <section className="mb-8 flex flex-col md:flex-row gap-6 items-center justify-between">
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setSelectedCategory(null)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${!selectedCategory ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' : 'bg-surface-dark text-text-secondary hover:bg-surface-accent'
-              }`}
-          >
-            全部顯示
-          </button>
-          {categories.map(cat => (
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar scroll-smooth">
+          <div className="flex items-center gap-2 bg-surface-dark/50 p-1.5 rounded-xl border border-white/5">
             <button
-              key={cat.id}
               type="button"
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${selectedCategory === cat.id ? 'bg-brand-primary text-white shadow-lg' : 'bg-surface-dark text-text-secondary hover:bg-surface-accent'
+              onClick={() => setSelectedCategory(null)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${!selectedCategory ? 'bg-brand-primary text-white shadow-lg' : 'text-text-secondary hover:text-text-primary'
                 }`}
             >
-              {cat.name}
+              全部顯示
             </button>
-          ))}
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${selectedCategory === cat.id ? 'bg-brand-primary text-white shadow-lg' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+        <div className="relative w-full md:w-80 group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-brand-primary transition-colors" size={18} />
           <input
             type="text"
-            placeholder="搜尋追蹤商品..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-surface-dark border border-white/10 rounded-xl py-2 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50"
+            placeholder="搜尋商品..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            className="w-full bg-surface-dark border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-text-primary focus:outline-none focus:border-brand-primary/50 transition-all focus:ring-4 focus:ring-brand-primary/5"
           />
         </div>
       </section>
@@ -372,6 +429,8 @@ export default function Dashboard() {
                 categories={categories}
                 onDelete={triggerDeleteItem}
                 onUpdateCategory={(catId) => updateItemCategory(item.id, catId)}
+                onEdit={setEditingItem}
+                isBestDeal={bestDealMap[item.category_id || 'uncategorized'] === item.id}
               />
             ))}
           </AnimatePresence>
