@@ -2,8 +2,34 @@ import asyncio
 import sys
 import re
 import json
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
+
+def clean_url(url):
+    """Removes common tracking and promotional parameters from a URL."""
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query, keep_blank_values=True)
+    
+    params_to_remove = [
+        'gclid', 'gclsrc', 'fbclid', 'utm_source', 'utm_medium', 
+        'utm_campaign', 'utm_term', 'utm_content', 'D_code', 
+        'mdiv', 'oid', 'kw', 'ec', 'openExternalBrowser'
+    ]
+    
+    cleaned_params = {k: v for k, v in query_params.items() if k not in params_to_remove}
+    
+    new_query = urlencode(cleaned_params, doseq=True)
+    cleaned_url = urlunparse((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        parsed_url.params,
+        new_query,
+        parsed_url.fragment
+    )).rstrip('?') # Remove trailing '?' if no query params are left
+    
+    return cleaned_url
 
 async def scrape_momo(page, url):
     try:
@@ -13,7 +39,7 @@ async def scrape_momo(page, url):
         
         content = await page.content()
         title_match = re.search(r'<meta property="og:title" content="([^"]+)">', content)
-        title = title_match.group(1) if title_match else "Unknown Title"
+        title = title_match.group(1).strip() if title_match else "Unknown Title"
         
         price_val = await page.evaluate('''() => {
             const priceMeta = document.querySelector('meta[property="product:price:amount"]');
@@ -28,9 +54,9 @@ async def scrape_momo(page, url):
             }
             return "0";
         }''')
-        return {"title": title, "price": int(price_val) if price_val != "0" else 0}
+        return {"title": title, "price": int(price_val) if price_val != "0" else 0, "url": url}
     except Exception as e:
-        return {"error": str(e), "price": 0}
+        return {"error": str(e), "price": 0, "url": url}
 
 async def scrape_pchome(page, url):
     try:
@@ -46,23 +72,27 @@ async def scrape_pchome(page, url):
                     if (val && parseInt(val) > 0) return val;
                 }
             }
-            const matches = document.body.innerText.match(/(?:NT\\$|\\$)\\s*([\\d,]+)/);
-            return matches ? matches[1].replace(/[^\\d]/g, '') : "0";
+            const script_matches = document.body.innerHTML.match(/"price"\\s*:\\s*(\\d+)/);
+            if(script_matches && script_matches[1]) return script_matches[1];
+
+            const text_matches = document.body.innerText.match(/(?:NT\\$|\\$)\\s*([\\d,]+)/);
+            return text_matches ? text_matches[1].replace(/[^\\d]/g, '') : "0";
         }''')
         
         title_element = await page.query_selector('meta[property="og:title"]')
         title = await title_element.get_attribute("content") if title_element else "Unknown Title"
         
-        return {"title": title, "price": int(price_val) if price_val != "0" else 0}
+        return {"title": title.strip(), "price": int(price_val) if price_val != "0" else 0, "url": url}
     except Exception as e:
-        return {"error": str(e), "price": 0}
+        return {"error": str(e), "price": 0, "url": url}
 
 async def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No URL provided"}))
         return
 
-    url = sys.argv[1]
+    original_url = sys.argv[1]
+    url = clean_url(original_url)
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -73,7 +103,7 @@ async def main():
         stealth_obj = Stealth()
         await stealth_obj.apply_stealth_async(page)
         
-        result = {"error": "Platform not supported", "price": 0}
+        result = {"error": "Platform not supported", "price": 0, "url": url}
         if "momoshop.com.tw" in url:
             result = await scrape_momo(page, url)
         elif "pchome.com.tw" in url:
