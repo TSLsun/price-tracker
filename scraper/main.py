@@ -1,7 +1,7 @@
 import asyncio
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright, Page
 from playwright_stealth import Stealth
@@ -57,7 +57,7 @@ def _process_successful_scrape(item: dict, price_num: int, title: str):
     # Update item price and timestamp
     supabase.table("tracked_items").update({
         "current_price": price_num,
-        "last_checked_at": datetime.now().isoformat(),
+        "last_checked_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", item_id).execute()
     
     # Record price history
@@ -131,7 +131,7 @@ async def run_scraper():
 
     # Filter out items that have already been checked today
     items_to_scrape = []
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     for item in all_items:
         last_checked_str = item.get("last_checked_at")
         if last_checked_str:
